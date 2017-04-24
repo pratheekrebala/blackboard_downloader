@@ -10,7 +10,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const queue = require('queue');
 
-const download_root = './Downloads'
+const download_root = 'Downloads'
 
 const q = queue({
     concurrency: 1,
@@ -35,15 +35,6 @@ var options = {
 
 function getCredentials(){
     return new Promise((resolve, reject) => {
-        prompt(login_schema).then((result) => {
-            console.log(`Logging in using username: ${result.name}`);
-            resolve(result);
-        });
-    })
-}
-
-function login(creds) {
-    return new Promise((resolve, reject) => {
         const login_schema = [
             {
                 type: 'input',
@@ -58,14 +49,24 @@ function login(creds) {
                 required: true
             }
         ]
+        prompt(login_schema).then((result) => {
+            console.log(`Logging in using username: ${result.name}`);
+            resolve(result);
+        });
+    })
+}
 
+function login(creds) {
+    return new Promise((resolve, reject) => {
         options.uri = 'webapps/login/';
         options.formData = {
             'user_id': creds.name,
             'password': creds.password
         }
         request.post(options).then(body => {
-            return checkLogin();
+            checkLogin().then(loggedIn => {
+                resolve(loggedIn);
+            });
         });
     })
 }
@@ -118,12 +119,12 @@ function getCourse(course){
     let course_id = course_url.query.id;
     getCourseStructure(course_id).then(available_sections => {
         promptSections(available_sections).then(sections_selected => {
-            downloadSections(sections_selected);
+            downloadSections(sections_selected, course);
         })
     })
 }
 
-function downloadSections(sections_selected){
+function downloadSections(sections_selected, course){
     let download_prompt = {
         name: 'confirmDownload',
         message: 'downloadFiles?',
@@ -133,7 +134,7 @@ function downloadSections(sections_selected){
     prompt(download_prompt).then((result) => {
         if(result['confirmDownload']) {
             sections_selected.forEach((section) => {
-                downloadFiles(section);
+                downloadFiles(section, course);
             })
         }
         else console.log('Nothing else to do, exiting.');
@@ -222,6 +223,7 @@ function parseContents(treeChild, parent){
         if(treeChild.id.includes('ReferredToType:CONTENT') || !treeChild.id || treeChild.type == 'ROOT'){
             parseHref(treeChild.contents).then(result => {
                 result.title = result.title || '';
+                result.title = result.title.replace('/', '_');
                 result.path = parent && parent.path != '' ? parent.path + '/' + result.title : result.title;
                 if(treeChild.hasChildren) {
                     if(result.hasOwnProperty('link')) pages_to_fetch.push(result);
@@ -245,9 +247,9 @@ function fetchPage(page){
         request(options).then((body) => {
             x(body, '#content_listContainer > li', [{
                 name: '.item.clearfix | trim',
-                attachments: x('ul.attachments.clearfix > li', [{
-                    name: 'a | trim',
-                    link: 'a@href'
+                attachments: x('ul.attachments.clearfix > li a, .item.clearfix a:not([href*=listContent])', [{
+                    name: '@text | trim',
+                    link: '@href'
                 }])
             }])((err, result) => {
                 page.results = result
@@ -257,29 +259,30 @@ function fetchPage(page){
     })
 }
 
-function constructFilePath(attachment, result, page){
-    let file_path = `${download_root}/${page.path}/${result.name}/${attachment.name}`
+function constructFilePath(attachment, result, page, course){
+    let file_segments = [download_root, course.courseName, page.path, result.name, attachment.name];
+    let file_path = './' + file_segments.map(segment => {return segment.replace('/', '_')}).join('/')
+    //let file_path = `${download_root}/${course.courseName}/${page.path}/${result.name}/${attachment.name}`
     return file_path;
 }
 
-function downloadFiles(page){
+function downloadFiles(page, course){
     let results = page.results;
     //Download all files in a given page.
     results.forEach(result => {
         result.attachments.forEach(attachment => {
-            shouldDownload(attachment, result, page).then(should_download => {
+            shouldDownload(attachment, result, page, course).then(should_download => {
                 if(should_download) {
                     q.push(function(cb) {
                         dl_options = options;
                         dl_options.uri = attachment.link;
                         dl_options.resolveWithFullResponse = true;
-                        let file_path = constructFilePath(attachment, result, page);
+                        let file_path = constructFilePath(attachment, result, page, course);
                         fs.mkdirs(path.dirname(file_path), err => {
                             if(!err) {
-                                console.log(file_path);
                                 request_native(options).pipe(fs.createWriteStream(file_path)).on('finish', () => {
-                                    console.log('finished');
-                                    console.log('Waiting for 3 seconds.')
+                                    console.log(`Finished downloading: ${file_path}`);
+                                    console.log('Waiting for 1 seconds prior to next fetch.')
                                     setTimeout(cb, 1000)
                                 });
                             }
@@ -291,9 +294,9 @@ function downloadFiles(page){
     })
 }
 
-function shouldDownload(attachment, attachment_parent, page){
+function shouldDownload(attachment, attachment_parent, page, course){
     return new Promise((resolve, reject) => {
-        let file_path = constructFilePath(attachment, attachment_parent, page);
+        let file_path = constructFilePath(attachment, attachment_parent, page, course);
         if (fs.existsSync(file_path)) {
             console.log(`${file_path} already exists.`);
             resolve(false);
@@ -324,6 +327,7 @@ checkLogin().then(loggedIn => {
         }
     })
     else console.log('Already Loggedin');
+
     if(loggedIn) startFetch();
 })
 
@@ -340,7 +344,7 @@ function startFetch(){
         };
         prompt(course_prompt).then((result) => {
             let selected_course = courses[result.courseChoice];
-            getCourse(selected_course)
+            getCourse(selected_course);
         });
     });
 }
