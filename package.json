@@ -1,0 +1,21 @@
+{
+  "name": "blackboard_downloader",
+  "version": "1.0.0",
+  "description": "Small script to download all attached files in a given class.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Pratheek Rebala <pratheek.rebala@time.com>",
+  "license": "MIT",
+  "dependencies": {
+    "fs-extra": "^2.1.2",
+    "inquirer": "^3.0.6",
+    "queue": "^4.2.1",
+    "request": "^2.81.0",
+    "request-promise-native": "^1.0.3",
+    "tough-cookie-filestore": "0.0.1",
+    "tough-cookie-store": "0.0.6",
+    "xml2js": "^0.4.17"
+  }
+}
