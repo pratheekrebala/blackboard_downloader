@@ -27,21 +27,6 @@ var x = Xray({
     }
 });
 
-const login_schema = [
-    {
-        type: 'input',
-        name: 'name',
-        message: 'Blackboard Username',
-        required: true
-    },
-    {
-        type: 'password',
-        name: 'password',
-        message: 'Blackboard Password',
-        required: true
-    }
-]
-
 var options = {
     jar: request.jar(new FileCookieStore('cookies.json')),
     baseUrl: blackboard_url,
@@ -59,6 +44,21 @@ function getCredentials(){
 
 function login(creds) {
     return new Promise((resolve, reject) => {
+        const login_schema = [
+            {
+                type: 'input',
+                name: 'name',
+                message: 'Blackboard Username',
+                required: true
+            },
+            {
+                type: 'password',
+                name: 'password',
+                message: 'Blackboard Password',
+                required: true
+            }
+        ]
+
         options.uri = 'webapps/login/';
         options.formData = {
             'user_id': creds.name,
@@ -101,8 +101,8 @@ function getCourses() {
             parseXML(body, function (err, result) {
                 page_body = result['contents'];
                 x(page_body, '.courseListing > li', [{
-                courseName: 'a',
-                courseInstructor: '.courseInformation > .name',
+                courseName: 'a | trim',
+                courseInstructor: '.courseInformation > .name | trim',
                 courseLink: 'a@href'
                 }])((err, obj) => {
                     if(!err) return resolve(obj);
@@ -116,24 +116,77 @@ function getCourses() {
 function getCourse(course){
     let course_url = url.parse(course['courseLink'], parseQueryString = true);
     let course_id = course_url.query.id;
-    getCourseStructure(course_id);
+    getCourseStructure(course_id).then(available_sections => {
+        promptSections(available_sections).then(sections_selected => {
+            downloadSections(sections_selected);
+        })
+    })
+}
+
+function downloadSections(sections_selected){
+    let download_prompt = {
+        name: 'confirmDownload',
+        message: 'downloadFiles?',
+        type: 'confirm',
+        default: false
+    }
+    prompt(download_prompt).then((result) => {
+        if(result['confirmDownload']) {
+            sections_selected.forEach((section) => {
+                downloadFiles(section);
+            })
+        }
+        else console.log('Nothing else to do, exiting.');
+    })
+}
+
+function promptSections(available_sections){
+    //Which sections to download?
+    return new Promise((resolve, reject) => {
+        let section_choices = ['All']
+        section_choices = section_choices.concat(available_sections.map(section => { return section['path']}))
+        let section_prompt = {
+                type: 'checkbox',
+                name: 'sectionChoice',
+                message: 'Select a section to download.',
+                choices: section_choices
+        };
+        prompt(section_prompt).then((result) => {
+            let sections_selected = [];
+            let section_choice = result['sectionChoice'];
+            console.log(section_choice);
+            if(!section_choice.includes('All')) {
+                section_choice.forEach(choice => {
+                    sections_selected = sections_selected.concat(available_sections.filter(section => {return section.path.startsWith(choice)}))
+                });
+            }
+            else sections_selected = available_sections;
+            resolve(sections_selected);
+            //let selected_course = courses[result.courseChoice];
+            //getCourse(selected_course)
+        });
+    })
 }
 
 function getCourseStructure(course_id){
-    let course_structure_url = `webapps/blackboard/execute/course/menuFolderViewGenerator`
-    options.uri = course_structure_url;
-    options.formData = null;
-    options.form = {
-        expandAll: 'true',
-        storeScope:'Session',
-        course_id: course_id,
-        displayMode:'courseMenu_newWindow',
-        editMode:'false',
-        openInParentWindow:'true'
-    }
-    options.json = false;
-    request.post(options).then(results => {
-        parseTree(JSON.parse(results));
+    return new Promise((resolve, reject) => {
+        let course_structure_url = `webapps/blackboard/execute/course/menuFolderViewGenerator`
+            options.uri = course_structure_url;
+            options.formData = null;
+            options.form = {
+                expandAll: 'true',
+                storeScope:'Session',
+                course_id: course_id,
+                displayMode:'courseMenu_newWindow',
+                editMode:'false',
+                openInParentWindow:'true'
+            }
+            options.json = false;
+            request.post(options).then(results => {
+                parseTree(JSON.parse(results)).then(available_sections => {
+                    resolve(available_sections);
+                })
+            });
     })
     //pipe(fs.createWriteStream('list.json'))
 }
@@ -250,23 +303,25 @@ function shouldDownload(attachment, attachment_parent, page){
 }
 
 function parseTree(structure_tree){
-    let tree_root = structure_tree['children'][0]
-    parseContents(tree_root).then((pages_to_fetch) => {
-        Promise.all(pages_to_fetch.map(page => {
-            return fetchPage(page)
-        })).then((results) => {
-            results.forEach((result) => {
-                console.log(result);
-                //downloadFiles(result);
+    return new Promise((resolve, reject) => {
+        let tree_root = structure_tree['children'][0]
+        parseContents(tree_root).then((pages_to_fetch) => {
+            Promise.all(pages_to_fetch.map(page => {
+                return fetchPage(page)
+            })).then((results) => {
+                resolve(results);
             })
-        })
-    });
+        });
+    })
 }
 
 checkLogin().then(loggedIn => {
-    if(!loggedIn) getCredentials().then(login).then(loggedIn => {
-        if (!loggedIn) console.log('Login Failed.')
-        else console.log('Login Success.');
+    if(!loggedIn) getCredentials().then(login).then(login_success => {
+        if (!login_success) console.log('Login Failed.')
+        else {
+            loggedIn = true;
+            console.log('Login Success.');
+        }
     })
     else console.log('Already Loggedin');
     if(loggedIn) startFetch();
