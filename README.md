@@ -19,6 +19,10 @@ Then install the dependencies:
   
 Then update the `blackboard_url` in `index.js`
 
-Then run the script using `node index.js` and follow the command prompt.
+Then run the script using:
+
+	node index.js
+  
+Then follow the instructions on the command prompt.
 
 If you have any issues - shoot me an email at `pratheekrebala@gmail.com` or open an Issue/PR.
