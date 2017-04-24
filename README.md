@@ -4,7 +4,7 @@ Handy tool that will allow you to download all or some selected files from cours
 
 I've personally tested this out for GWU's implementation of Blackboard, but this should work out of the box on other implementations.
 
-##Setup
+## Setup
 
 This is a Node.js script, so you should consider [downloading Node](http://nodejs.org/) before attempting to run it.
 
