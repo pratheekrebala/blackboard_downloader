@@ -9,6 +9,7 @@ const url = require('url');
 const fs = require('fs-extra');
 const path = require('path');
 const queue = require('queue');
+const ProgressBar = require('ascii-progress');
 
 const download_root = 'Downloads'
 
@@ -16,6 +17,8 @@ const q = queue({
     concurrency: 1,
     autostart: true
 });
+
+let ui = new inquirer.ui.BottomBar();
 
 var blackboard_url = 'https://blackboard.gwu.edu/';
 
@@ -268,6 +271,11 @@ function constructFilePath(attachment, result, page, course){
 
 function downloadFiles(page, course){
     let results = page.results;
+    let bar = new ProgressBar({
+        schema: `Downloading ${page.title}: [:bar] :percent :etas`,
+        width : 40,
+        total : results.reduce((acc, result) => {return acc + result.attachments.length}, 0)
+    });
     //Download all files in a given page.
     results.forEach(result => {
         result.attachments.forEach(attachment => {
@@ -281,14 +289,15 @@ function downloadFiles(page, course){
                         fs.mkdirs(path.dirname(file_path), err => {
                             if(!err) {
                                 request_native(options).pipe(fs.createWriteStream(file_path)).on('finish', () => {
-                                    console.log(`Finished downloading: ${file_path}`);
-                                    console.log('Waiting for 1 seconds prior to next fetch.')
+                                    bar.tick();
+                                    //ui.updateBottomBar(`Finished downloading: ${file_path}`);
                                     setTimeout(cb, 1000)
                                 });
                             }
                         })
                     });
                 }
+                else bar.tick();
             })
         })
     })
@@ -298,7 +307,7 @@ function shouldDownload(attachment, attachment_parent, page, course){
     return new Promise((resolve, reject) => {
         let file_path = constructFilePath(attachment, attachment_parent, page, course);
         if (fs.existsSync(file_path)) {
-            console.log(`${file_path} already exists.`);
+            //ui.updateBottomBar(`${file_path} already exists.`);
             resolve(false);
         }
         else resolve(true);

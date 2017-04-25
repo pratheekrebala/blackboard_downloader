@@ -9,6 +9,7 @@
   "author": "Pratheek Rebala <pratheek.rebala@time.com>",
   "license": "MIT",
   "dependencies": {
+    "ascii-progress": "^1.0.5",
     "fs-extra": "^2.1.2",
     "inquirer": "^3.0.6",
     "queue": "^4.2.1",
